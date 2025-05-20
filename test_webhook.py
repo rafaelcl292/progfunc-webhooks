@@ -1,18 +1,18 @@
-# Simulando o envio de um webhook
-import requests          # Para fazer requisições HTTP
-import asyncio           # Para controle assíncrono
-import sys               # Para capturar argumentos de linha de comando
-import json              # Para manipular JSON
-from fastapi import FastAPI, Request  # Web framework para criar os endpoints locais
-import uvicorn           # Para rodar o servidor FastAPI
-from threading import Thread  # Para rodar o servidor em paralelo ao teste
+import asyncio
+import json
+import sys
+from threading import Thread
 
-# Criação da aplicação FastAPI
+import requests
+import uvicorn
+from fastapi import FastAPI, Request
+
 app = FastAPI()
 
 # Variáveis para armazenar confirmações e cancelamentos
 confirmations = []
 cancellations = []
+
 
 # Endpoint para receber confirmação de transações
 @app.post("/confirmar")
@@ -22,6 +22,7 @@ async def confirmar(req: Request):
     confirmations.append(body["transaction_id"])  # Registra a transação confirmada
     return {"status": "ok"}
 
+
 # Endpoint para receber cancelamento de transações
 @app.post("/cancelar")
 async def cancelar(req: Request):
@@ -30,9 +31,11 @@ async def cancelar(req: Request):
     cancellations.append(body["transaction_id"])  # Registra a transação cancelada
     return {"status": "ok"}
 
+
 # Função para rodar o servidor FastAPI numa thread separada
 def run_server():
     uvicorn.run(app, host="127.0.0.1", port=5001, log_level="error")
+
 
 # Carrega argumentos de linha de comando ou usa valores padrão
 async def load_args():
@@ -47,7 +50,7 @@ async def load_args():
 
     headers = {
         "Content-Type": "application/json",
-        "X-Webhook-Token": token  # Token de segurança
+        "X-Webhook-Token": token,  # Token de segurança
     }
 
     data = {
@@ -55,17 +58,29 @@ async def load_args():
         "transaction_id": transaction_id,
         "amount": amount,
         "currency": currency,
-        "timestamp": timestamp
+        "timestamp": timestamp,
     }
 
     return url, headers, data
 
+
 # Função principal que executa os testes contra o webhook
 async def test_webhook(url, headers, data):
+    from requests.exceptions import ConnectionError
+
     i = 0  # Contador de testes bem-sucedidos
 
+    def safe_post(*args, **kwargs):
+        try:
+            return requests.post(*args, **kwargs)
+        except ConnectionError:
+            print("❗ Não foi possível conectar ao servidor do webhook em", url)
+            return None
+
     # Teste 1: fluxo correto
-    response = requests.post(url, headers=headers, data=json.dumps(data))
+    response = safe_post(url, headers=headers, data=json.dumps(data))
+    if response is None:
+        return i
     await asyncio.sleep(1)  # Aguarda o webhook chamar /confirmar
     if response.status_code == 200 and data["transaction_id"] in confirmations:
         i += 1
@@ -74,7 +89,9 @@ async def test_webhook(url, headers, data):
         print("1. Webhook test failed: successful!")
 
     # Teste 2: transação duplicada (deve falhar se o webhook previne duplicações)
-    response = requests.post(url, headers=headers, data=json.dumps(data))
+    response = safe_post(url, headers=headers, data=json.dumps(data))
+    if response is None:
+        return i
     if response.status_code != 200:
         i += 1
         print("2. Webhook test ok: transação duplicada!")
@@ -84,7 +101,9 @@ async def test_webhook(url, headers, data):
     # Teste 3: amount incorreto e transaction_id alterado
     data["transaction_id"] += "a"  # Altera ID para evitar conflito
     data["amount"] = "0.00"
-    response = requests.post(url, headers=headers, data=json.dumps(data))
+    response = safe_post(url, headers=headers, data=json.dumps(data))
+    if response is None:
+        return i
     await asyncio.sleep(1)
     if response.status_code != 200 and data["transaction_id"] in cancellations:
         i += 1
@@ -96,7 +115,9 @@ async def test_webhook(url, headers, data):
     token = headers["X-Webhook-Token"]
     headers["X-Webhook-Token"] = "invalid-token"
     data["transaction_id"] += "b"
-    response = requests.post(url, headers=headers, data=json.dumps(data))
+    response = safe_post(url, headers=headers, data=json.dumps(data))
+    if response is None:
+        return i
     if response.status_code != 200:
         i += 1
         print("4. Webhook test ok: Token Invalido!")
@@ -104,7 +125,9 @@ async def test_webhook(url, headers, data):
         print("4. Webhook test failed: Token Invalido!")
 
     # Teste 5: payload vazio
-    response = requests.post(url, headers=headers, data=json.dumps({}))
+    response = safe_post(url, headers=headers, data=json.dumps({}))
+    if response is None:
+        return i
     if response.status_code != 200:
         i += 1
         print("5. Webhook test ok: Payload Invalido!")
@@ -115,7 +138,9 @@ async def test_webhook(url, headers, data):
     del data["timestamp"]
     headers["X-Webhook-Token"] = token  # Restaura token correto
     data["transaction_id"] += "c"
-    response = requests.post(url, headers=headers, data=json.dumps(data))
+    response = safe_post(url, headers=headers, data=json.dumps(data))
+    if response is None:
+        return i
     await asyncio.sleep(1)
     if response.status_code != 200 and data["transaction_id"] in cancellations:
         i += 1
@@ -125,7 +150,7 @@ async def test_webhook(url, headers, data):
 
     return i
 
-# Bloco principal que inicia o servidor local e executa os testes
+
 if __name__ == "__main__":
     # Roda o servidor local de /confirmar e /cancelar em background
     server_thread = Thread(target=run_server, daemon=True)

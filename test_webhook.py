@@ -2,6 +2,7 @@ import asyncio
 import json
 import sys
 from threading import Thread
+from typing import Any
 
 import requests
 import uvicorn
@@ -10,14 +11,14 @@ from fastapi import FastAPI, Request
 app = FastAPI()
 
 # Variáveis para armazenar confirmações e cancelamentos
-confirmations = []
-cancellations = []
+confirmations: list[str] = []
+cancellations: list[str] = []
 
 
 # Endpoint para receber confirmação de transações
 @app.post("/confirmar")
-async def confirmar(req: Request):
-    body = await req.json()
+async def confirmar(req: Request) -> dict[str, str]:
+    body: dict[str, Any] = await req.json()
     print("✅ Confirmação recebida:", body)
     confirmations.append(body["transaction_id"])  # Registra a transação confirmada
     return {"status": "ok"}
@@ -25,35 +26,35 @@ async def confirmar(req: Request):
 
 # Endpoint para receber cancelamento de transações
 @app.post("/cancelar")
-async def cancelar(req: Request):
-    body = await req.json()
+async def cancelar(req: Request) -> dict[str, str]:
+    body: dict[str, Any] = await req.json()
     print("❌ Cancelamento recebido:", body)
     cancellations.append(body["transaction_id"])  # Registra a transação cancelada
     return {"status": "ok"}
 
 
 # Função para rodar o servidor FastAPI numa thread separada
-def run_server():
+def run_server() -> None:
     uvicorn.run(app, host="127.0.0.1", port=5001, log_level="error")
 
 
 # Carrega argumentos de linha de comando ou usa valores padrão
-async def load_args():
-    event = sys.argv[1] if len(sys.argv) > 1 else "payment_success"
-    transaction_id = sys.argv[2] if len(sys.argv) > 2 else "abc123"
-    amount = sys.argv[3] if len(sys.argv) > 3 else "49.90"
-    currency = sys.argv[4] if len(sys.argv) > 4 else "BRL"
-    timestamp = sys.argv[5] if len(sys.argv) > 5 else "2023-10-01T12:00:00Z"
-    token = sys.argv[6] if len(sys.argv) > 6 else "meu-token-secreto"
+async def load_args() -> tuple[str, dict[str, str], dict[str, str]]:
+    event: str = sys.argv[1] if len(sys.argv) > 1 else "payment_success"
+    transaction_id: str = sys.argv[2] if len(sys.argv) > 2 else "abc123"
+    amount: str = sys.argv[3] if len(sys.argv) > 3 else "49.90"
+    currency: str = sys.argv[4] if len(sys.argv) > 4 else "BRL"
+    timestamp: str = sys.argv[5] if len(sys.argv) > 5 else "2023-10-01T12:00:00Z"
+    token: str = sys.argv[6] if len(sys.argv) > 6 else "meu-token-secreto"
 
-    url = "http://localhost:5000/webhook"  # URL do webhook a ser testado
+    url: str = "http://localhost:5000/webhook"  # URL do webhook a ser testado
 
-    headers = {
+    headers: dict[str, str] = {
         "Content-Type": "application/json",
         "X-Webhook-Token": token,  # Token de segurança
     }
 
-    data = {
+    data: dict[str, str] = {
         "event": event,
         "transaction_id": transaction_id,
         "amount": amount,
@@ -65,14 +66,14 @@ async def load_args():
 
 
 # Função principal que executa os testes contra o webhook
-async def test_webhook(url, headers, data):
+async def test_webhook(url: str, headers: dict[str, str], data: dict[str, str]) -> int:
     from requests.exceptions import ConnectionError
 
-    i = 0  # Contador de testes bem-sucedidos
+    i: int = 0  # Contador de testes bem-sucedidos
 
-    def safe_post(*args, **kwargs):
+    def safe_post(url, *args, **kwargs):
         try:
-            return requests.post(*args, **kwargs)
+            return requests.post(url, *args, **kwargs)
         except ConnectionError:
             print("❗ Não foi possível conectar ao servidor do webhook em", url)
             return None
@@ -112,7 +113,7 @@ async def test_webhook(url, headers, data):
         print("3. Webhook test failed: amount incorreto!")
 
     # Teste 4: token inválido
-    token = headers["X-Webhook-Token"]
+    token: str = headers["X-Webhook-Token"]
     headers["X-Webhook-Token"] = "invalid-token"
     data["transaction_id"] += "b"
     response = safe_post(url, headers=headers, data=json.dumps(data))
@@ -153,7 +154,7 @@ async def test_webhook(url, headers, data):
 
 if __name__ == "__main__":
     # Roda o servidor local de /confirmar e /cancelar em background
-    server_thread = Thread(target=run_server, daemon=True)
+    server_thread: Thread = Thread(target=run_server, daemon=True)
     server_thread.start()
 
     # Aguarda o servidor estar pronto
@@ -161,7 +162,7 @@ if __name__ == "__main__":
 
     # Carrega argumentos e executa os testes
     url, headers, data = asyncio.run(load_args())
-    total = asyncio.run(test_webhook(url, headers, data))
+    total: int = asyncio.run(test_webhook(url, headers, data))
 
     # Exibe resultado final
     print(f"{total}/6 tests completed.")

@@ -1,0 +1,5 @@
+(library
+ (public_name webhook-server)
+ (name webhook_server)
+ (libraries cohttp-lwt-unix lwt yojson)
+ (preprocess (pps lwt_ppx))) 
